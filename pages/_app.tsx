@@ -1,7 +1,7 @@
 // pages/_app.tsx
 import '../styles/global.css';
 import type { AppProps } from 'next/app';
-import { Layout } from '@/components/Layout';
+import { Layout } from '@/components/layout';
 import { Inter } from 'next/font/google';
 import { Toaster } from 'react-hot-toast';
 import { useRouter } from 'next/router';
