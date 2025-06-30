@@ -1,0 +1,149 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import Link from 'next/link';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
+} from 'recharts';
+import DonutAvance from '@/components/DonutAvance';
+import { Button } from '@/components/ui/button';
+import { exportarDashboardPDF, exportarDashboardExcel } from '@/lib/exportadores';
+
+type ProyectoResumen = {
+  id: string;
+  cliente: string;
+  descripcion: string;
+  precio: number;
+  totalCobrado: number;
+  totalGastado: number;
+  avance: number;
+};
+
+export default function Dashboard() {
+  const [data, setData] = useState<ProyectoResumen[]>([]);
+
+  const cargarDatos = async () => {
+    const { data: presupuestos } = await supabase
+      .from('presupuestos')
+      .select('id, cliente, descripcion, precio, avance')
+      .eq('estado', 'en ejecución');
+
+    if (!presupuestos) return;
+
+    const resultados: ProyectoResumen[] = [];
+
+    for (const p of presupuestos) {
+      const { data: cobros } = await supabase
+        .from('cobros_cliente')
+        .select('monto')
+        .eq('presupuesto_id', p.id);
+
+      const { data: gastos } = await supabase
+        .from('gastos_proyecto')
+        .select('monto')
+        .eq('presupuesto_id', p.id);
+
+      const totalCobrado = cobros?.reduce((sum, c) => sum + Number(c.monto), 0) || 0;
+      const totalGastado = gastos?.reduce((sum, g) => sum + Number(g.monto), 0) || 0;
+
+      resultados.push({
+        id: p.id,
+        cliente: p.cliente,
+        descripcion: p.descripcion,
+        precio: Number(p.precio),
+        totalCobrado,
+        totalGastado,
+        avance: p.avance || 0,
+      });
+    }
+
+    setData(resultados);
+  };
+
+  useEffect(() => {
+    cargarDatos();
+  }, []);
+
+  const totalCobradoGlobal = data.reduce((sum, p) => sum + p.totalCobrado, 0);
+  const totalGastadoGlobal = data.reduce((sum, p) => sum + p.totalGastado, 0);
+  const totalEsperado = data.reduce((sum, p) => sum + p.precio, 0);
+  const restanteACobrar = totalEsperado - totalCobradoGlobal;
+  const colores = ['#10b981', '#3b82f6', '#f59e0b'];
+
+  return (
+    <div className="p-6 max-w-6xl mx-auto">
+      <h1 className="text-2xl font-bold mb-6">Dashboard de Proyectos en Ejecución</h1>
+
+      {data.length === 0 ? (
+        <p className="text-muted-foreground">No hay proyectos en ejecución.</p>
+      ) : (
+        <>
+          <div className="flex justify-end gap-2 mb-4">
+            <Button variant="outline" onClick={() => exportarDashboardExcel(data)}>
+              Exportar Excel
+            </Button>
+            <Button onClick={() => exportarDashboardPDF(data)}>
+              Exportar PDF
+            </Button>
+          </div>
+
+          <div className="mb-12">
+            <h2 className="text-lg font-semibold mb-2">Resumen por proyecto</h2>
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart data={data}>
+                <XAxis dataKey="cliente" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="totalCobrado" fill="#10b981" name="Cobrado" />
+                <Bar dataKey="totalGastado" fill="#3b82f6" name="Gastado" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="mb-12">
+            <h2 className="text-lg font-semibold mb-2">Avance de obra</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {data.map((proyecto) => (
+                <Link key={proyecto.id} href={`/proyecto/${proyecto.id}`}>
+                  <div className="flex flex-col items-center space-y-1 hover:scale-105 transition-transform cursor-pointer">
+                    <DonutAvance porcentaje={proyecto.avance} size={80} />
+                    <p className="text-center text-sm font-medium">{proyecto.cliente}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold mb-2">Totales globales</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: 'Cobrado', value: totalCobradoGlobal },
+                    { name: 'Gastado', value: totalGastadoGlobal },
+                    { name: 'Restante a cobrar', value: restanteACobrar },
+                  ]}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  fill="#8884d8"
+                  label
+                >
+                  {colores.map((color, index) => (
+                    <Cell key={`cell-${index}`} fill={color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

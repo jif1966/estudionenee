@@ -1,0 +1,19 @@
+import Sidebar from "@/components/Sidebar";
+import Header from "@/components/Header";
+import FraseMotivadora from "@/components/FraseMotivadora";
+import DashboardAdmin from "@/components/DashboardAdmin";
+
+export default function DashboardPage() {
+  return (
+    <div className="flex">
+      <Sidebar />
+      <main className="ml-64 flex-1">
+        <Header title="Dashboard" />
+        <div className="p-6">
+          <DashboardAdmin />
+          <FraseMotivadora />
+        </div>
+      </main>
+    </div>
+  );
+}
