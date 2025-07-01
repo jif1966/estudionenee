@@ -1,4 +1,4 @@
-import Sidebar from "@/components/Sidebar"; // Corregido por si acaso
+import { Sidebar } from "@/components/Sidebar"; // Corregido por si acaso
 import { Header } from "@/components/Header"; // ¡CORREGIDO!
 import { useState } from "react";
 
