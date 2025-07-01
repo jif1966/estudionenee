@@ -1,6 +1,6 @@
 'use client';
 
-import { Sidebar } from "@/components/sidebar"; // Corregido a minúsculas por consistencia
+import { Sidebar } from "@/components/Sidebar"; // Corregido a minúsculas por consistencia
 import { Header } from "@/components/Header"; 
 import { useState } from "react";
 
