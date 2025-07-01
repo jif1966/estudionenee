@@ -1,4 +1,4 @@
-import Sidebar from "@/components/Sidebar"; // Asumo que Sidebar también es una exportación nombrada
+import { Sidebar } from "@/components/Sidebar"; // Asumo que Sidebar también es una exportación nombrada
 import { Header } from "@/components/Header"; // ¡CORREGIDO!
 import { useState } from "react";
 
