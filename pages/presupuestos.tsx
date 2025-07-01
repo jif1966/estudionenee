@@ -354,7 +354,7 @@ export default function PresupuestosPage() {
             logoParaElDoc = [new Paragraph({
                 children: [
                     new ImageRun({
-                        data: logoBuffer,
+                        buffer: logoBuffer,
                         transformation: { width: 192, height: 52.5 },
                     })
                 ],
