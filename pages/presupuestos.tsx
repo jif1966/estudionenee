@@ -395,7 +395,6 @@ export default function PresupuestosPage() {
                     <div className="flex flex-wrap gap-2">
                         <button onClick={() => openCreateModal(selectedPresupuesto)} className="px-3 py-2 text-xs rounded bg-green-500 hover:bg-green-600">+ Añadir Adicional</button>
                         <button onClick={handleExportPDF} className="px-3 py-2 text-xs rounded bg-blue-500 hover:bg-blue-600">Exportar PDF</button>
-                        <button onClick={handleExportWord} className="px-3 py-2 text-xs rounded bg-sky-500 hover:bg-sky-600">Exportar Word</button>
                         {isAdmin && (
                             <button 
                                 onClick={() => handleDeletePresupuesto(selectedPresupuesto.id, selectedPresupuesto.cliente)} 
