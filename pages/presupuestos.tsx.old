@@ -345,46 +345,30 @@ export default function PresupuestosPage() {
     toast.loading('Generando Word...');
    
     try {
-        let imageParagraph: Paragraph; // Variable para contener el párrafo de la imagen
-
+        let logoParaElDoc: Paragraph[] = [];
         try {
             const response = await fetch('/logo.png');
             if (!response.ok) throw new Error('Logo no encontrado');
-            const imageBlob = await response.blob();
-
-            // Convertimos la imagen a una cadena de texto base64, igual que en la función del PDF
-            const base64String = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = reject;
-                reader.readAsDataURL(imageBlob);
-            });
-
-            // Creamos la imagen para el documento usando la cadena base64.
-            // La librería espera la propiedad 'data' para esto.
-            imageParagraph = new Paragraph({
+            const logoBuffer = await response.arrayBuffer();
+           
+            logoParaElDoc = [new Paragraph({
                 children: [
                     new ImageRun({
-                        data: base64String, // Pasamos la cadena base64
-                        transformation: {
-                            width: 192,
-                            height: 52.5
-                        },
+                        buffer: logoBuffer,
+                        transformation: { width: 192, height: 52.5 },
                     })
                 ],
                 alignment: AlignmentType.RIGHT,
-            });
-
+            })];
         } catch(e) {
             console.warn("No se pudo cargar el logo, se omitirá del Word.", e);
-            // Si el logo falla, usamos un párrafo de texto como plan B.
-            imageParagraph = new Paragraph({ text: "Estudio Nenee", alignment: AlignmentType.RIGHT });
+            logoParaElDoc = [new Paragraph({ text: "Estudio Nenee", alignment: AlignmentType.RIGHT })];
         }
 
         const doc = new Document({
             sections: [{
                 children: [
-                    imageParagraph, // Insertamos el párrafo con la imagen o el texto
+                    ...logoParaElDoc,
                     new Paragraph({ text: " " }),
                     new Paragraph({ text: "Presupuesto", heading: HeadingLevel.HEADING_1 }),
                     new Paragraph({ text: `Cliente: ${selectedPresupuesto.cliente}` }),
