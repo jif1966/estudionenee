@@ -8,10 +8,10 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } fro
 
 // --- Interfaces ---
 interface GastoFijo { id: number; nombre: string; }
-interface PagoGastoFijo { id: number; gasto_fijo_id: number | null; monto_pagado: number; fecha_pago: string; descripcion_adicional?: string; gastos_fijos_mensuales?: { nombre: string } | null; }
+interface PagoGastoFijo { id: number; gasto_fijo_id: number; monto_pagado: number; fecha_pago: string; descripcion_adicional?: string; }
 interface GastoHistorico { mes_formateado: string; total_gastado: number; }
 
-// --- Componente Modal para Registrar o Editar Pago (CON LÓGICA DE FECHA CORREGIDA) ---
+// --- Componente Modal para Registrar o Editar Pago ---
 const ModalRegistrarPago = ({ pago, gasto, isOpen, onClose, onSave }: { pago?: PagoGastoFijo | null; gasto: GastoFijo | null; isOpen: boolean; onClose: () => void; onSave: () => void; }) => {
     const [monto, setMonto] = useState('');
     const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
@@ -39,18 +39,14 @@ const ModalRegistrarPago = ({ pago, gasto, isOpen, onClose, onSave }: { pago?: P
             return;
         }
         setLoading(true);
-
-        // --- CORRECCIÓN CLAVE ---
-        // Leemos el mes y año directamente del texto para evitar problemas de zona horaria.
-        const [anio, mes] = fecha.split('-').map(Number);
         
         const datos = {
-            gasto_fijo_id: gasto.id === 999 ? null : gasto.id,
+            gasto_fijo_id: gasto.id,
             monto_pagado: Number(monto),
             fecha_pago: fecha,
             descripcion_adicional: descripcion,
-            mes: mes,   // Usamos el mes corregido
-            anio: anio, // Usamos el año corregido
+            mes: new Date(fecha).getMonth() + 1,
+            anio: new Date(fecha).getFullYear()
         };
 
         const promise = pago
@@ -76,7 +72,7 @@ const ModalRegistrarPago = ({ pago, gasto, isOpen, onClose, onSave }: { pago?: P
             <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md text-gray-800">
                 <h2 className="text-xl font-bold mb-4">{pago ? 'Editar' : 'Registrar'} Pago: {gasto?.nombre}</h2>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    {(gasto?.nombre === 'Otro' || (pago && pago.gasto_fijo_id === null)) && (
+                    {(gasto?.nombre === 'Otro' || (pago && gasto?.nombre !== pago.descripcion_adicional)) && (
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Descripción del Gasto</label>
                             <input type="text" value={descripcion} onChange={e => setDescripcion(e.target.value)} className="w-full p-2 mt-1 rounded border border-gray-300" required />
@@ -120,34 +116,31 @@ export default function ContabilidadPage() {
 
     const fetchData = useCallback(async () => {
         setLoading(true);
-        try {
-            const [
-                { data: saldoData },
-                { data: saldosProyectosData },
-                { data: gastosFijosData },
-                { data: pagosData },
-                { data: historialData, error: historialError }
-            ] = await Promise.all([
-                supabase.rpc('calcular_saldo_caja_actual'),
-                supabase.rpc('get_saldos_totales_proyectos_en_curso'),
-                supabase.from('gastos_fijos_mensuales').select('*').eq('activo', true),
-                supabase.from('pagos_gastos_fijos').select('*, gastos_fijos_mensuales(nombre)').eq('mes', mesSeleccionado).eq('anio', anioSeleccionado),
-                supabase.rpc('get_gastos_fijos_ultimos_12_meses')
-            ]);
+        
+        const [
+            { data: saldoData },
+            { data: saldosProyectosData },
+            { data: gastosFijosData },
+            { data: pagosData },
+            { data: historialData, error: historialError }
+        ] = await Promise.all([
+            supabase.rpc('calcular_saldo_caja_actual'),
+            supabase.rpc('get_saldos_totales_proyectos_en_curso'),
+            supabase.from('gastos_fijos_mensuales').select('*').eq('activo', true),
+            supabase.from('pagos_gastos_fijos').select('*').eq('mes', mesSeleccionado).eq('anio', anioSeleccionado),
+            supabase.rpc('get_gastos_fijos_ultimos_12_meses')
+        ]);
 
-            setSaldoCaja(saldoData || 0);
-            setTotalPorCobrar(saldosProyectosData?.[0]?.total_saldo_a_cobrar || 0);
-            setTotalPorPagar(saldosProyectosData?.[0]?.total_saldo_a_pagar || 0);
-            setGastosFijos(gastosFijosData || []);
-            setPagosDelPeriodo(pagosData || []);
-            setHistorialGastos(historialData || []);
+        setSaldoCaja(saldoData || 0);
+        setTotalPorCobrar(saldosProyectosData?.[0]?.total_saldo_a_cobrar || 0);
+        setTotalPorPagar(saldosProyectosData?.[0]?.total_saldo_a_pagar || 0);
+        setGastosFijos(gastosFijosData || []);
+        setPagosDelPeriodo(pagosData || []);
+        setHistorialGastos(historialData || []);
 
-            if (historialError) toast.error("Error al cargar el historial de gastos.");
-        } catch (error) {
-            toast.error("Ocurrió un error al cargar los datos financieros.");
-        } finally {
-            setLoading(false);
-        }
+        if (historialError) toast.error("Error al cargar el historial de gastos.");
+        
+        setLoading(false);
     }, [mesSeleccionado, anioSeleccionado]);
 
     useEffect(() => {
@@ -174,8 +167,6 @@ export default function ContabilidadPage() {
     const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
     const dineroNetoAIngresar = totalPorCobrar - totalPorPagar;
-    
-    const gastosOtros = pagosDelPeriodo.filter(p => p.gasto_fijo_id === null);
 
     return (
         <div className="text-white">
@@ -223,7 +214,7 @@ export default function ContabilidadPage() {
                             return (
                                 <div key={gasto.id} className="p-3 rounded-lg bg-white/5 border border-white/10 flex flex-col text-sm">
                                     <h3 className="font-bold mb-2 flex-grow">{gasto.nombre}</h3>
-                                    <div className="flex-grow space-y-1 mb-3 text-xs min-h-[40px]">
+                                    <div className="flex-grow space-y-1 mb-3 text-xs">
                                         {pagosAsociados.length > 0 ? (
                                             pagosAsociados.map(pago => (
                                                 <div key={pago.id} className="bg-black/20 p-1.5 rounded flex justify-between items-center">
@@ -234,7 +225,7 @@ export default function ContabilidadPage() {
                                                     </div>
                                                 </div>
                                             ))
-                                        ) : <p className="text-gray-400 italic">Sin pagos este mes.</p>}
+                                        ) : <p className="text-gray-400">Sin pagos este mes.</p>}
                                     </div>
                                     <button onClick={() => handleOpenModal(gasto)} className="mt-auto w-full bg-emerald-600/50 hover:bg-emerald-600 text-white font-semibold py-1 px-3 text-sm rounded transition-colors">
                                         + Añadir Pago
@@ -251,33 +242,13 @@ export default function ContabilidadPage() {
                         </div>
                     </div>
                 )}
-                 {gastosOtros.length > 0 && (
-                    <div className="mt-6 pt-4 border-t border-white/20">
-                        <h3 className="text-lg font-semibold mb-2">Otros Gastos del Mes</h3>
-                        <div className="space-y-1 text-xs">
-                            {gastosOtros.map(pago => (
-                                <div key={pago.id} className="bg-black/20 p-1.5 rounded flex justify-between items-center">
-                                    <div>
-                                        <p className="font-semibold">{pago.descripcion_adicional}</p>
-                                        <p className="text-gray-400">{new Date(pago.fecha_pago + 'T00:00:00').toLocaleDateString('es-AR')}</p>
-                                    </div>
-                                    <div className="flex gap-2 items-center">
-                                        <span className="font-semibold text-emerald-300">{formatCurrency(pago.monto_pagado)}</span>
-                                        <button onClick={() => handleOpenModal({id: 999, nombre: 'Otro'}, pago)} className="font-mono text-blue-300 hover:text-blue-100" title="Editar este pago">E</button>
-                                        <button onClick={() => handleDeletePago(pago.id)} className="font-mono text-red-400 hover:text-red-200" title="Borrar este pago">X</button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                 )}
             </div>
             
             <div className="bg-black/20 backdrop-blur-md border border-white/20 rounded-xl p-6">
                  <h2 className="text-xl font-semibold mb-4">Historial de Gastos Fijos (Últimos 12 Meses)</h2>
                  {loading ? <p>Cargando gráfico...</p> : (
                     <ResponsiveContainer width="100%" height={400}>
-                        <BarChart data={historialGastos} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                        <BarChart data={historialGastos} margin={{ top: 5, right: 20, left: 30, bottom: 5 }}>
                             <XAxis dataKey="mes_formateado" stroke="#a1a1aa" fontSize={12} />
                             <YAxis 
                                 stroke="#a1a1aa" 

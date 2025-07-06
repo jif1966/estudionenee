@@ -1,81 +1,88 @@
 // contexts/AuthContext.tsx
-'use client';
-
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
 
 interface AuthContextType {
-  user: User | null;
-  permissions: string[];
-  loading: boolean;
-  hasPermission: (permission: string) => boolean;
+    user: User | null;
+    profile: any | null;
+    permissions: Set<string>;
+    loading: boolean;
+    hasPermission: (permission: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
-  const [permissions, setPermissions] = useState<string[]>([]);
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+    const [user, setUser] = useState<User | null>(null);
+    const [profile, setProfile] = useState<any | null>(null);
+    const [permissions, setPermissions] = useState<Set<string>>(new Set());
+    const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (_event === 'SIGNED_OUT') {
-        setPermissions([]);
-        setLoading(false);
-      }
-    });
+    useEffect(() => {
+        const getSessionAndProfile = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            setUser(session?.user ?? null);
+            
+            if (session?.user) {
+                // Paso 1: Obtenemos el perfil del usuario para saber su rol_id
+                const { data: userProfile, error: profileError } = await supabase
+                    .from('perfiles')
+                    .select('rol_id')
+                    .eq('id', session.user.id)
+                    .single();
+
+                // IMPRIMIMOS EN CONSOLA LO QUE OBTENEMOS
+                console.log("PERFIL OBTENIDO DE SUPABASE:", userProfile);
+                if (profileError) console.error("ERROR AL OBTENER PERFIL:", profileError);
+
+                setProfile(userProfile);
+
+                // Paso 2: Si obtuvimos un perfil con un rol_id, buscamos los permisos para ESE rol
+                if (userProfile?.rol_id) {
+                    const { data: userPermissions, error: permissionsError } = await supabase
+                        .from('rol_permisos')
+                        .select('permiso')
+                        .eq('rol_id', userProfile.rol_id);
+
+                    // IMPRIMIMOS EN CONSOLA LOS PERMISOS
+                    console.log(`PERMISOS OBTENIDOS PARA EL ROL ID ${userProfile.rol_id}:`, userPermissions);
+                    if (permissionsError) console.error("ERROR AL OBTENER PERMISOS:", permissionsError);
+                    
+                    setPermissions(new Set(userPermissions?.map(p => p.permiso) || []));
+                }
+            }
+            setLoading(false);
+        };
+
+        getSessionAndProfile();
+
+        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+            // Cuando el estado de auth cambia (login/logout), volvemos a buscar todo
+            setUser(session?.user ?? null);
+            getSessionAndProfile();
+        });
+
+        return () => {
+            authListener.subscription.unsubscribe();
+        };
+    }, []);
     
-    // Al cargar la app, obtener la sesión actual
-    supabase.auth.getSession().then(({ data: { session } }) => {
-        setUser(session?.user ?? null);
-        if (!session) setLoading(false);
-    });
+    const hasPermission = (permission: string) => {
+        // Para depurar, imprimimos qué permiso se está comprobando
+        console.log(`Comprobando permiso: '${permission}'... Resultado: ${permissions.has(permission)}`);
+        return permissions.has(permission);
+    }
 
-    return () => authListener?.subscription.unsubscribe();
-  }, []);
+    const value = { user, profile, permissions, loading, hasPermission };
 
-  useEffect(() => {
-    const fetchUserPermissions = async () => {
-      if (!user) return; // Si no hay usuario, no hacer nada
-
-      // 1. Obtener el rol_id del perfil del usuario
-      const { data: profile } = await supabase
-        .from('perfiles')
-        .select('rol_id')
-        .eq('id', user.id)
-        .single();
-
-      if (profile && profile.rol_id) {
-        // 2. Con el rol_id, llamar a la función para obtener los nombres de los permisos
-        const { data: perms } = await supabase
-          .rpc('get_permissions_for_role', { p_rol_id: profile.rol_id });
-        
-        if (perms) {
-          setPermissions(perms.map(p => p.nombre));
-        }
-      }
-      setLoading(false);
-    };
-
-    fetchUserPermissions();
-  }, [user]);
-
-  const hasPermission = (permission: string): boolean => {
-    return permissions.includes(permission);
-  };
-
-  const value = { user, permissions, loading, hasPermission };
-
-  return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;
-}
+    return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;
+};
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth debe ser usado dentro de un AuthProvider');
-  }
-  return context;
+    const context = useContext(AuthContext);
+    if (context === undefined) {
+        throw new Error('useAuth must be used within an AuthProvider');
+    }
+    return context;
 };

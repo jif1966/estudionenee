@@ -2,21 +2,19 @@
 'use client';
 
 import Link from 'next/link';
+// useRouter es para redirigir, usePathname para saber la página actual
 import { usePathname, useRouter } from 'next/navigation'; 
 import Image from 'next/image';
 import React from 'react';
-import { supabase } from '@/lib/supabase';
-import toast from 'react-hot-toast';
-import { useAuth } from '@/contexts/AuthContext'; // Importamos el hook de autenticación
+import { supabase } from '@/lib/supabase'; // Importamos supabase
+import toast from 'react-hot-toast'; // Importamos el notificador
 
-// --- Lista de items del menú con sus permisos requeridos ---
 const navItems = [
-  { name: 'Dashboard', href: '/dashboard', requiredPermission: 'view_dashboard' },
-  { name: 'Presupuestos', href: '/presupuestos', requiredPermission: 'view_presupuestos' },
-  { name: 'Proyectos', href: '/proyectos', requiredPermission: 'view_proyectos' },
-  { name: 'Contabilidad', href: '/contabilidad', requiredPermission: 'view_contabilidad' },
-  { name: 'Administración Usuarios', href: '/configuracion', requiredPermission: 'view_administracion' },
-  { name: 'Control de Cuentas', href: '/control-de-cuentas', requiredPermission: 'view_control_cuentas' },
+  { name: 'Dashboard', href: '/dashboard' },
+  { name: 'Presupuestos', href: '/presupuestos' },
+  { name: 'Proyectos', href: '/proyectos' },
+  { name: 'Contabilidad', href: '/contabilidad' },
+  { name: 'Administración', href: '/configuracion' }, // Ruta corregida si es necesario
 ];
 
 interface SidebarProps {
@@ -25,9 +23,9 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen }: SidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { hasPermission } = useAuth(); // Usamos el hook para saber los permisos del usuario
+  const router = useRouter(); // Inicializamos el router para poder redirigir
 
+  // --- NUEVA FUNCIÓN PARA CERRAR SESIÓN ---
   const handleLogout = async () => {
     toast.loading('Cerrando sesión...');
     const { error } = await supabase.auth.signOut();
@@ -36,6 +34,7 @@ export function Sidebar({ isOpen }: SidebarProps) {
     if (error) {
       toast.error('Error al cerrar la sesión: ' + error.message);
     } else {
+      // Si el logout es exitoso, redirigimos al usuario a la página de login
       router.push('/');
     }
   };
@@ -54,22 +53,20 @@ export function Sidebar({ isOpen }: SidebarProps) {
       <nav className="flex-grow p-4">
         <ul>
           {navItems.map((item) => (
-            // La magia está aquí: solo se muestra el item si el usuario tiene el permiso
-            hasPermission(item.requiredPermission) && (
-              <li key={item.name}>
-                <Link
-                  href={item.href}
-                  className={`flex items-center p-3 my-1 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors duration-200
-                    ${pathname === item.href ? 'bg-gray-200 font-semibold' : ''}`}
-                >
-                  {item.name}
-                </Link>
-              </li>
-            )
+            <li key={item.name}>
+              <Link
+                href={item.href}
+                className={`flex items-center p-3 my-1 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors duration-200
+                  ${pathname === item.href ? 'bg-gray-200 font-semibold' : ''}`}
+              >
+                {item.name}
+              </Link>
+            </li>
           ))}
         </ul>
       </nav>
       <div className="p-4 border-t">
+        {/* BOTÓN ACTUALIZADO: ahora llama a la función handleLogout */}
         <button 
           onClick={handleLogout}
           className="w-full p-2 rounded-lg text-left text-red-500 hover:bg-red-100 hover:font-semibold transition-all"

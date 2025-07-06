@@ -7,6 +7,8 @@ import { getPresupuestos } from "@/lib/presupuestos-service";
 import toast from "react-hot-toast";
 import React from "react";
 import { debounce } from 'lodash';
+
+// Importaciones para exportar
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Document, Packer, Paragraph, TextRun, Table, TableCell, TableRow, WidthType, ImageRun, AlignmentType, HeadingLevel } from 'docx';
@@ -115,10 +117,10 @@ const ModalEditarItem = ({ item, isOpen, onClose, onSave }: { item: Item | null,
     );
 };
 
+
 export default function PresupuestosPage() {
   const { hasPermission } = useAuth();
-  const isAdmin = useMemo(() => hasPermission('manage_presupuestos'), [hasPermission]);
-
+  const canDelete = useMemo(() => hasPermission('delete_presupuestos'), [hasPermission]);
   const [presupuestos, setPresupuestos] = useState<Presupuesto[]>([]);
   const [selectedPresupuesto, setSelectedPresupuesto] = useState<Presupuesto | null>(null);
   const [items, setItems] = useState<Item[]>([]);
@@ -182,11 +184,12 @@ export default function PresupuestosPage() {
       setCustomDescription('');
     }
   };
- 
+  
   const handleUpdateStatus = async (presupuesto: Presupuesto, nuevoEstado: PresupuestoEstado) => {
     const { error } = await supabase.from('presupuestos').update({ estado: nuevoEstado }).eq('id', presupuesto.id);
-    if (error) { toast.error('Error al cambiar el estado.'); }
-    else {
+    if (error) {
+      toast.error('Error al cambiar el estado.');
+    } else {
       toast.success(`Estado cambiado a: ${nuevoEstado}`);
       fetchPresupuestos();
       if (selectedPresupuesto && selectedPresupuesto.id === presupuesto.id) {
@@ -208,11 +211,12 @@ export default function PresupuestosPage() {
     setSelectedPresupuesto(prev => prev ? { ...prev, margen_ganancia: nuevoMargen } : null);
     debouncedUpdateMargen(selectedPresupuesto.id, nuevoMargen);
   };
- 
-  const handleDeletePresupuesto = async (presupuestoId: number, cliente: string) => {
-    if (window.confirm(`¿Estás seguro de que quieres eliminar el proyecto de "${cliente}"? Esta acción es irreversible y eliminará todos sus adicionales e items.`)) {
+  
+  const handleDeletePresupuesto = async (presupuesto: Presupuesto) => {
+    if (!presupuesto) return;
+    if (window.confirm(`¿Estás seguro de que quieres eliminar el proyecto de "${presupuesto.cliente}"? Esta acción es irreversible y eliminará todos sus adicionales e items.`)) {
         toast.loading('Eliminando proyecto...');
-        const { error } = await supabase.from('presupuestos').delete().eq('id', presupuestoId);
+        const { error } = await supabase.from('presupuestos').delete().eq('id', presupuesto.id);
         toast.dismiss();
         if (error) {
             toast.error(`Error al eliminar: ${error.message}`);
@@ -224,7 +228,7 @@ export default function PresupuestosPage() {
         }
     }
   };
- 
+  
   const { parentPresupuestos, childrenMap } = useMemo(() => {
     const parentPresupuestos: Presupuesto[] = [];
     const childrenMap = new Map<number, Presupuesto[]>();
@@ -240,7 +244,7 @@ export default function PresupuestosPage() {
     }
     return { parentPresupuestos, childrenMap };
   }, [presupuestos]);
- 
+  
   const filteredPresupuestos = useMemo(() => {
     if (!searchTerm) return parentPresupuestos;
     return parentPresupuestos.filter(p =>
@@ -255,9 +259,9 @@ export default function PresupuestosPage() {
     const precioFinalCliente = costoTotal + ganancia;
     return { costoTotal, precioFinalCliente };
   }, [items, selectedPresupuesto?.margen_ganancia]);
- 
+  
   const openCreateModal = (parent: Presupuesto | null = null) => { setParentForNew(parent); setCreateModalOpen(true); };
- 
+  
   const toggleExpand = (id: number) => {
     setExpandedIds(prev => {
       const newSet = new Set(prev);
@@ -284,7 +288,7 @@ export default function PresupuestosPage() {
     try {
         const doc = new jsPDF();
         const fecha = new Date().toLocaleDateString('es-AR');
-       
+        
         try {
             const logoBlob = await fetch('/logo.webp').then(res => {
                 if (!res.ok) throw new Error('Logo not found');
@@ -302,7 +306,7 @@ export default function PresupuestosPage() {
         } catch (e) {
             console.warn("No se pudo cargar el logo, se omitirá del PDF.");
         }
-       
+        
         doc.setFontSize(10);
         doc.text('Diseño y Producción de Mobiliario', 195, 42, { align: 'right' });
         doc.setFontSize(14);
@@ -330,7 +334,7 @@ export default function PresupuestosPage() {
         doc.text(formatCurrency(precioFinalCliente), 195, finalY + 15, { align: 'right' });
         doc.setFontSize(9);
         doc.text('Presupuesto válido por 15 días. No incluye IVA (21%).', 15, finalY + 30);
-       
+        
         toast.dismiss();
         doc.save(`Presupuesto-${selectedPresupuesto.cliente}.pdf`);
     } catch (error: any) {
@@ -340,7 +344,65 @@ export default function PresupuestosPage() {
     }
   };
 
-    if (loading) return <div className="text-center text-white/80">Cargando presupuestos...</div>;
+  const handleExportWord = async () => {
+    if (!selectedPresupuesto) return;
+    toast.loading('Generando Word...');
+    
+    try {
+        let logoImageRun: ImageRun | undefined;
+        try {
+            const response = await fetch('/logo.png');
+            if (!response.ok) throw new Error('Network response was not ok');
+            const logoBuffer = await response.arrayBuffer();
+            logoImageRun = new ImageRun({ data: logoBuffer, transformation: { width: 192, height: 52.5 } });
+        } catch(e) {
+            console.warn("No se pudo cargar el logo, se omitirá del Word.", e);
+        }
+
+        const doc = new Document({
+            sections: [{
+                properties: {},
+                headers: {
+                    default: new Paragraph({
+                        children: logoImageRun ? [logoImageRun] : [new TextRun("Estudio Nenee")],
+                        alignment: AlignmentType.RIGHT,
+                    }),
+                },
+                children: [
+                    new Paragraph({ text: "Presupuesto", heading: HeadingLevel.HEADING_1 }),
+                    new Paragraph({ text: " " }),
+                    new Paragraph({ text: `Cliente: ${selectedPresupuesto.cliente}` }),
+                    new Paragraph({ text: `Proyecto: ${selectedPresupuesto.descripcion}` }),
+                    new Paragraph({ text: `Fecha: ${new Date().toLocaleDateString('es-AR')}` }),
+                    new Paragraph({ text: " " }),
+                    new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: [
+                            new TableRow({ children: [ new TableCell({ children: [new Paragraph({ text: "Descripción Detallada", bold: true })] }) ] }),
+                            ...items.filter(item => item.descripcion_cliente).map(item => new TableRow({ children: [ new TableCell({ children: [new Paragraph(item.descripcion_cliente || '')] }) ] })),
+                        ],
+                    }),
+                    new Paragraph({ text: " " }),
+                    new Paragraph({ 
+                        children: [new TextRun({ text: `Total: ${formatCurrency(precioFinalCliente)}`, bold: true, size: 28 })],
+                        alignment: AlignmentType.RIGHT,
+                     }),
+                ],
+            }],
+        });
+
+        const blob = await Packer.toBlob(doc);
+        saveAs(blob, `Presupuesto-${selectedPresupuesto.cliente}.docx`);
+        toast.dismiss();
+        toast.success("Documento de Word generado.");
+    } catch (error: any) {
+        toast.dismiss();
+        toast.error("Error al generar el Word. Revisa la consola.");
+        console.error("ERROR DETALLADO EN 'handleExportWord':", error);
+    }
+  };
+
+  if (loading) return <div className="text-center text-white/80">Cargando presupuestos...</div>;
   if (error) return <div className="text-center text-red-400">{error}</div>;
 
   return (
@@ -379,7 +441,7 @@ export default function PresupuestosPage() {
                     </li>
                     {expandedIds.has(p.id) && childrenMap.get(p.id)?.map(child => (
                         <li key={child.id} onClick={(e) => { e.stopPropagation(); handleSelectPresupuesto(child); }} className={`p-3 rounded-lg cursor-pointer transition-colors flex items-center justify-between ml-6 border-l-2 border-white/20 ${selectedPresupuesto?.id === child.id ? 'bg-white/30' : 'bg-white/10 hover:bg-white/20'}`}>
-                            <div><span className="font-medium truncate">{child.descripcion || 'Adicional'}</span><p className={`capitalize text-xs`}>{child.estado}</p></div>
+                           <div><span className="font-medium truncate">{child.descripcion || 'Adicional'}</span><p className={`capitalize text-xs`}>{child.estado}</p></div>
                         </li>
                     ))}
                 </React.Fragment>
@@ -395,17 +457,18 @@ export default function PresupuestosPage() {
                     <div className="flex flex-wrap gap-2">
                         <button onClick={() => openCreateModal(selectedPresupuesto)} className="px-3 py-2 text-xs rounded bg-green-500 hover:bg-green-600">+ Añadir Adicional</button>
                         <button onClick={handleExportPDF} className="px-3 py-2 text-xs rounded bg-blue-500 hover:bg-blue-600">Exportar PDF</button>
-                        {isAdmin && (
+                        <button onClick={handleExportWord} className="px-3 py-2 text-xs rounded bg-sky-500 hover:bg-sky-600">Exportar Word</button>
+                        {canDelete && (
                             <button 
-                                onClick={() => handleDeletePresupuesto(selectedPresupuesto.id, selectedPresupuesto.cliente)} 
+                                onClick={() => handleDeletePresupuesto(selectedPresupuesto)}
                                 className="px-3 py-2 text-xs rounded bg-red-600 hover:bg-red-700 font-semibold"
                             >
                                 Eliminar Proyecto
                             </button>
                         )}
                     </div>
-                 </div>
-                 <div>
+                </div>
+                <div>
                     <h3 className="font-semibold mb-2">Items de Costo (Uso Interno)</h3>
                     <div className="space-y-2 mb-4 bg-black/10 p-4 rounded-lg max-h-64 overflow-y-auto">
                         {items.map(item => (
@@ -422,8 +485,8 @@ export default function PresupuestosPage() {
                         <div className="sm:col-span-2 flex gap-2"><div className="flex-grow"><label className="text-xs font-medium">Monto</label><input type="number" step="0.01" placeholder="Costo" value={newItem.costo} onChange={e => setNewItem({...newItem, costo: Number(e.target.value)})} className="p-2 rounded bg-white text-gray-800 w-full mt-1" required/></div><div><label className="text-xs font-medium">Moneda</label><select value={newItem.moneda} onChange={e => setNewItem({...newItem, moneda: e.target.value as 'ARS' | 'USD'})} className="p-2 rounded bg-white text-gray-800 w-full mt-1 h-[42px]"><option value="ARS">$</option><option value="USD">U$S</option></select></div></div>
                         <button type="submit" className="w-full p-2 rounded bg-emerald-500 hover:bg-emerald-600 font-bold sm:col-span-3">Añadir Item</button>
                     </form>
-                 </div>
-                 <div className="mt-6 pt-6 border-t border-white/20 space-y-3 text-lg">
+                </div>
+                <div className="mt-6 pt-6 border-t border-white/20 space-y-3 text-lg">
                     <div className="flex justify-between items-center"><span>Margen de Ganancia:</span><div className="flex items-center gap-2"><input type="number" value={selectedPresupuesto.margen_ganancia} onChange={handleMargenChange} className="p-1 rounded bg-white/20 w-20 text-center font-bold"/><span>%</span></div></div>
                     <div className="flex justify-between text-gray-300"><span>Costo Total (Interno):</span><span>{formatCurrency(costoTotal)}</span></div>
                     <div className="flex justify-between font-bold text-2xl pt-2 border-t border-white/10"><span>PRECIO FINAL (Cliente):</span><span>{formatCurrency(precioFinalCliente)}</span></div>
@@ -433,7 +496,7 @@ export default function PresupuestosPage() {
                         <button onClick={() => handleUpdateStatus(selectedPresupuesto, 'no aceptado')} className="px-4 py-2 text-base rounded-lg bg-amber-500 hover:bg-amber-600 disabled:bg-gray-500 disabled:cursor-not-allowed" disabled={selectedPresupuesto.estado === 'no aceptado'}>No Aceptado</button>
                         <button onClick={() => handleUpdateStatus(selectedPresupuesto, 'cancelado')} className="px-4 py-2 text-base rounded-lg bg-red-500 hover:bg-red-600 disabled:bg-gray-500 disabled:cursor-not-allowed" disabled={selectedPresupuesto.estado === 'cancelado'}>Cancelar</button>
                     </div>
-                 </div>
+                </div>
             </div>
           ) : (
             <div className="flex items-center justify-center h-full bg-black/20 backdrop-blur-md border border-white/20 rounded-xl p-6"><p className="text-gray-300">Selecciona un proyecto principal de la izquierda para ver sus detalles o crea uno nuevo con el botón `+`.</p></div>

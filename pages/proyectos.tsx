@@ -1,4 +1,4 @@
-// pages/proyectos.tsx
+// pages/proyectos.tsx (Corregido)
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -25,10 +25,15 @@ const FormularioMovimiento = ({ proyectoId, tipo, onSave, itemsDelPresupuesto = 
     const [moneda, setMoneda] = useState<'ARS' | 'USD'>('ARS');
     const [loading, setLoading] = useState(false);
 
+    // ================================================================
+    // AQUÍ ESTÁ LA CORRECCIÓN
+    // Se elimina `itemsDelPresupuesto` de las dependencias para evitar
+    // que el formulario se reinicie en cada renderizado.
+    // ================================================================
     useEffect(() => {
         setDescripcion('');
         setCategoria('');
-    }, [tipo, itemsDelPresupuesto]);
+    }, [tipo]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
